@@ -69,8 +69,7 @@ class Chef
           @source
         else
           raise ArgumentError, "Bad type for WindowsPackage resource, use a String" unless arg.is_a?(String)
-          Chef::Log.debug("#{package_name}: sanitizing source path '#{arg}'")
-          @source = ::File.absolute_path(arg).gsub(::File::SEPARATOR, ::File::ALT_SEPARATOR)
+          @source = arg
         end
       end
     end

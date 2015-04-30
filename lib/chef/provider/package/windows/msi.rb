@@ -41,27 +41,34 @@ class Chef
           # Returns a version if the package is installed or nil if it is not.
           def installed_version
             Chef::Log.debug("#{@new_resource} getting product code for package at #{@new_resource.source}")
-            product_code = get_product_property(@new_resource.source, "ProductCode")
+            product_code = get_product_property(source, "ProductCode")
             Chef::Log.debug("#{@new_resource} checking package status and version for #{product_code}")
             get_installed_version(product_code)
           end
 
           def package_version
             Chef::Log.debug("#{@new_resource} getting product version for package at #{@new_resource.source}")
-            get_product_property(@new_resource.source, "ProductVersion")
+            get_product_property(source, "ProductVersion")
           end
 
           def install_package(name, version)
             # We could use MsiConfigureProduct here, but we'll start off with msiexec
             Chef::Log.debug("#{@new_resource} installing MSI package '#{@new_resource.source}'")
-            shell_out!("msiexec /qn /i \"#{@new_resource.source}\" #{expand_options(@new_resource.options)}", {:timeout => @new_resource.timeout, :returns => @new_resource.returns})
+            shell_out!("msiexec /qn /i \"#{source}\" #{expand_options(@new_resource.options)}", {:timeout => @new_resource.timeout, :returns => @new_resource.returns})
           end
-  
+
           def remove_package(name, version)
             # We could use MsiConfigureProduct here, but we'll start off with msiexec
             Chef::Log.debug("#{@new_resource} removing MSI package '#{@new_resource.source}'")
             shell_out!("msiexec /qn /x \"#{@new_resource.source}\" #{expand_options(@new_resource.options)}", {:timeout => @new_resource.timeout, :returns => @new_resource.returns})
           end
+
+          private
+
+          def source
+            ::File.absolute_path(@new_resource.source).gsub(::File::SEPARATOR, ::File::ALT_SEPARATOR)
+          end
+
         end
       end
     end

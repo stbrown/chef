@@ -19,6 +19,7 @@
 require 'chef/resource/windows_package'
 require 'chef/provider/package'
 require 'chef/util/path_helper'
+require 'uri'
 
 class Chef
   class Provider
@@ -36,11 +37,19 @@ class Chef
 
         # load_current_resource is run in Chef::Provider#run_action when not in whyrun_mode?
         def load_current_resource
-          @new_resource.source(Chef::Util::PathHelper.validate_path(@new_resource.source))
 
           @current_resource = Chef::Resource::WindowsPackage.new(@new_resource.name)
-          @current_resource.version(package_provider.installed_version)
-          @new_resource.version(package_provider.package_version)
+          if is_url?(new_resource.source) && !::File.exists?(source_location(new_resource.source))
+            Chef::Log.debug("We do not know the version of #{new_resource.source} because the file is not downloaded")
+            @current_resource.version(:unknown.to_s)
+          else
+            if is_url?(new_resource.source)
+              new_resource.source(source_location(new_resource.source))
+            end
+            @current_resource.version(package_provider.installed_version)
+            @new_resource.version(package_provider.package_version)
+          end
+
           @current_resource
         end
 
@@ -71,6 +80,14 @@ class Chef
           end
         end
 
+        def action_install
+          if new_source = get_source_file(new_resource.source)
+            new_resource.source(new_source)
+            load_current_resource
+          end
+          super
+        end
+
         # Chef::Provider::Package action_install + action_remove call install_package + remove_package
         # Pass those calls to the correct sub-provider
         def install_package(name, version)
@@ -80,6 +97,55 @@ class Chef
         def remove_package(name, version)
           package_provider.remove_package(name, version)
         end
+
+        def get_source_file(source)
+          @source_file ||= begin
+            if is_url?(source)
+              resource = source_resource(source)
+              resource.run_action(:create)
+              Chef::Log.debug("#{@new_resource} fetched source file to #{resource.path}")
+              resource.path
+            end
+          end
+        end
+
+        def source_resource(source)
+          file_cache_path = source_location(source)
+          remote_file = Chef::Resource::RemoteFile.new(file_cache_path, run_context)
+          remote_file.source(source)
+          remote_file.backup(false)
+          remote_file
+        end
+
+        def source_location(source)
+          @source_location ||= begin
+            if is_url?(source)
+              uri = ::URI.parse(source)
+              filename = ::File.basename(::URI.unescape(uri.path))
+              file_cache_dir = Chef::FileCache.create_cache_path("package/")
+              file_cache_path = "#{file_cache_dir}/#{filename}"
+            else
+              source
+            end
+          end
+        end
+
+        def is_url?(source)
+          begin
+            scheme = URI.split(source).first
+            return false unless scheme
+            %w(http https ftp file).include?(scheme.downcase)
+          rescue URI::InvalidURIError
+            return false
+          end
+        end
+
+        # @return [Array] new_version(s) as an array
+        def new_version_array
+          # Because the one in the parent caches things
+          [new_resource.version]
+        end
+
       end
     end
   end
